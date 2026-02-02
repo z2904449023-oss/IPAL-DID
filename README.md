@@ -1,157 +1,210 @@
-# Coding Samples – Stata Empirical Work & News Sentiment Pipeline  
+# Coding Samples – IPAL-DID 
 Author: Xinyi Zhou
 
-This project analyzes the impact of the Belt and Road Initiative (BRI) on provincial trade outcomes in China using panel data and modern difference-in-differences methods. The empirical strategy follows **Borusyak, Jaravel & Spiess (2021)** and includes both **temporal** and **spatial placebo tests** to assess robustness.
+## **Overview**
 
-The analysis uses province-level annual panel data and implements:
+This project evaluates the causal impact of the Belt and Road Initiative (BRI) on provincial trade flows in China using annual panel data and modern difference-in-differences methods. The analysis follows **Borusyak, Jaravel & Spiess (2021)** and supplements the main DID-imputation estimates with:
 
-* Data cleaning and missing-value checks
-* Construction of treatment timing (`bri_year`)
-* Event-time variable (`rel_year`)
-* Descriptive trends for treated vs. untreated provinces
-* DID-imputation estimation
-* Temporal placebo (shift treatment 5 years earlier)
-* Spatial placebo (randomly assigned treatment years)
+* **Temporal placebo tests**
+* **Spatial placebo tests**
+* **Randomization inference with 100 simulations** for both placebo types
+* **Distributional inference for tau₀** (the contemporaneous treatment effect)
+
+The code is written in Stata and is fully reproducible.
 
 ---
 
-## **Data**
+## **Dataset**
 
-Due to privacy policy, data is not public. Once you create your own data and add the path at the right place, the code could work.
+The dataset is stored at:
+
+```
+/Users/zhouxinyi/Desktop/PKU/term paper/Data for Student Term Paper/Panel Data(China Provincial)2.dta
+```
 
 ### **Key variables**
 
-| Variable           | Description                                    |
-| ------------------ | ---------------------------------------------- |
-| `prvn`             | Province identifier                            |
-| `year`             | Calendar year                                  |
-| `trade`            | Total import–export value                      |
-| `export`, `import` | Components of trade                            |
-| `bri_year`         | First BRI implementation year in each province |
-| `rel_year`         | Event time relative to treatment               |
-| `lntrade`          | Log of total trade                             |
+| Variable                    | Description                                   |
+| --------------------------- | --------------------------------------------- |
+| `prvn`                      | Province ID                                   |
+| `year`                      | Observation year                              |
+| `trade`, `export`, `import` | Trade variables                               |
+| `bri_year`                  | The first year a province implemented the BRI |
+| `rel_year`                  | Event time: `year – bri_year`                 |
+| `lntrade`                   | Log of total trade                            |
 
-Observations prior to 1988 or with missing trade variables are removed.
+Observations with missing trade data and those prior to 1988 are removed.
 
 ---
 
-## **1. Data Cleaning & Panel Checks**
+## **Code Structure**
+
+### **1. Data inspection & missing-value handling**
 
 The script:
 
-1. Summarizes variables and checks missing values
-2. Drops observations missing `trade`, `export`, or `import`
-3. Verifies panel structure using `xtset`
-4. Detects potential gaps in year sequences
-5. Restricts the dataset to 1988 onward
+* Summarizes variables
+* Checks for missing data
+* Removes observations missing `trade`, `export`, or `import`
+* Verifies panel structure (`xtset prvn year`)
+* Checks for gaps in yearly sequences
+* Restricts dataset to years ≥ 1988
+
+This ensures clean and balanced panel data for DID estimation.
 
 ---
 
-## **2. Constructing Treatment & Event-Time Variables**
+### **2. Constructing treatment timing and event time**
 
-The code assigns each province its BRI adoption year (`bri_year`) based on official rollout timing.
+The script assigns `bri_year` based on the adoption year of the BRI in each province.
+Event time is defined as:
 
-`rel_year = year – bri_year` is computed for event-study analysis.
-Provinces never treated are coded as `bri_year = 0` and excluded from event-time calculations.
-
-`lntrade = ln(trade)` is used as the outcome.
-
----
-
-## **3. Descriptive Trends**
-
-To visualize raw patterns independent of any model, the script:
-
-* Groups provinces by BRI adoption year
-* Collapses data to year-level means
-* Generates a line plot comparing treated cohorts and never-treated units
-
-This provides an intuitive check of pre-trend similarity.
-
----
-
-## **4. DID-Imputation Estimation**
-
-The main causal analysis applies:
-
-**Borusyak, Jaravel & Spiess (2021) — “Imputation-based DID”**
-
-Using:
-
-```stata
-did_imputation lntrade prvn year bri_year, ///
-    pre(10) horizons(0/8) cluster(prvn) autos delta(1) minn(5)
+```
+rel_year = year – bri_year
 ```
 
-This estimates dynamic treatment effects, using:
+`lntrade = ln(trade)` is used as the main outcome.
+
+---
+
+### **3. Descriptive trends (pre-model visualization)**
+
+To visually compare treated vs. untreated provinces:
+
+* Provinces are grouped by BRI implementation year
+* Yearly mean trade values are collapsed
+* A multi-cohort trend plot is generated
+
+This provides an intuitive check on trend similarity prior to treatment.
+
+---
+
+### **4. Main estimation: DID-Imputation (Borusyak et al., 2021)**
+
+The core method uses:
+
+```stata
+did_imputation lntrade prvn year bri_year, pre(10) horizons(0/8) ///
+    cluster(prvn) autos delta(1) minn(5)
+```
+
+Features:
 
 * 10 pre-treatment leads
 * 0–8 post-treatment horizons
-* Clustering at the province level
+* Province-clustered standard errors
+* Automatic selection of untreated comparisons
 
-An event-study plot is generated with `event_plot`.
+An event-study plot is generated using `event_plot`.
 
 ---
 
-## **5. Temporal Placebo Test**
+### **5. Temporal Placebo Tests**
 
-A falsification exercise shifts the treatment year **five years earlier**:
+#### **(a) Single temporal placebo**
+
+Treatment year is shifted **5 years earlier**:
 
 ```
 bri_year_T_Placebo = bri_year – 5
 ```
 
-If significant effects appear **before** the true treatment date, it suggests potential violations of parallel trends.
-
-Event-study estimates are plotted for comparison.
+This tests whether spurious effects appear **before** true policy implementation.
 
 ---
 
-## **6. Spatial Placebo Test**
+#### **(b) 100 temporal placebo simulations (random treatment shifts)**
 
-Another robustness test randomly assigns provinces into pseudo-treatment groups (2015–2018) using fixed random draws:
+To implement **randomization inference (RI)**:
 
-```stata
-set seed 2024
-gen rand = runiform() … (one value per province)
-```
+* Random shifts of ±1 to ±5 years are applied to treated provinces
+* `did_imputation` is run 100 times
+* Each simulation extracts the placebo estimate of `tau0`
+* These placebo τ₀ values form a **null distribution**
 
-This intentionally destroys any true treatment variation.
-If DID detects false "effects," this suggests model overfitting or spurious identification.
+The script then:
 
-Results are again plotted using `event_plot`.
+* Computes a **two-sided RI p-value**:
+
+  ```
+  p = (# of |tau_placebo| ≥ |tau_real|) / (R + 1)
+  ```
+* Plots a histogram of simulated τ₀ values
+* Marks the **real τ₀ estimate** with a red line
+
+This is a rigorous falsification test.
+
+---
+
+### **6. Spatial Placebo Tests**
+
+#### **(a) Single spatial placebo**
+
+Provinces are randomly assigned into artificial treatment cohorts:
+
+* 2015 group
+* 2016 group
+* 2017 group
+* 2018 group
+
+The distribution of random assignments approximates real treatment proportions.
+
+---
+
+#### **(b) 100 spatial placebo simulations**
+
+Each simulation:
+
+* Randomly assigns provinces to pseudo-treatment groups
+* Runs `did_imputation`
+* Extracts τ₀
+
+A second RI p-value is computed, and a histogram is plotted.
+
+This tests whether results could be driven by **geographical clustering or compositional differences**, rather than the BRI itself.
 
 ---
 
 ## **Outputs**
 
-The script produces three event-study figures:
+The script produces the following:
 
-1. **Main DID-imputation result**
+### **Event-Study Figures**
+
+1. **Main DID-imputation event-study**
 2. **Temporal placebo event-study**
 3. **Spatial placebo event-study**
 
-These visuals help assess whether treatment effects are credible and whether pre-trends and placebo tests support identification.
+### **Randomization Inference Figures**
+
+4. **Histogram of 100 temporal placebo τ₀ values**
+5. **Histogram of 100 spatial placebo τ₀ values**
+
+Both figures include a red reference line representing the **true** τ₀ estimate.
 
 ---
 
 ## **Reproducibility**
 
-To reproduce all results:
+To reproduce the results:
 
-1. Install required Stata packages
+1. Install required Stata packages:
 
-   ```stata
-   ssc install did_imputation
-   ssc install event_plot, replace
-   ```
-2. Ensure data file paths match your system
+```stata
+ssc install did_imputation
+ssc install event_plot, replace
+```
+
+2. Update the dataset path if needed
 3. Run the do-file from top to bottom
+
+The code uses fixed random seeds (`set seed 2024`), ensuring full replicability.
 
 ---
 
-## **Reference**
+## **References**
 
-Borusyak, K., Jaravel, X., & Spiess, J. (2021). *Revisiting Event Study Designs: Robust and Efficient Estimation*. Working Paper.
+Borusyak, K., Jaravel, X., & Spiess, J. (2021).
+*Revisiting Event Study Designs: Robust and Efficient Estimation.* Working Paper.
 
 ---
