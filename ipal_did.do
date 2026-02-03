@@ -92,7 +92,7 @@ replace bri_year_T_Placebo = bri_year - 5 if bri_year >0
 replace bri_year_T_Placebo = . if bri_year == .
 
 preserve  
-did_imputation lntrade prvn year bri_year_T_Placebo,pre(10) horizons(0/8) cluster(prvn) autos delta(1) minn(5)
+did_imputation lntrade prvn year bri_year_T_Placebo,pre(10) horizons(0/4) cluster(prvn) autos delta(1) minn(5)
 est store did_temporal
 
 event_plot, ciplottype(rcap) stub_lead(pre#) stub_lag(tau#) ///
@@ -101,7 +101,7 @@ event_plot, ciplottype(rcap) stub_lead(pre#) stub_lag(tau#) ///
         xt("year from Temporal placebo treatment") ///
         t("Temporal Placebo: pseudo BRI 5 years earlier") ///
         xti("Years to Temporal placebo treatment") ///
-        xla(-10(1)8) ///
+        xla(-10(1)4) ///
     )
 restore
 
@@ -123,13 +123,12 @@ set seed 2024
 tempname Btemp                         
 matrix `Btemp' = J(`R',1,.)          
 
-* Loop 100 times: each time randomly draw a shift (±1,...,±5), construct pseudo BRI years
+* Loop 100 times: each time randomly draw a shift (-1,...,-5), construct pseudo BRI years
 forvalues r = 1/`R' {
    
 preserve
-    scalar k = floor(runiform()*5) + 1          
-    scalar dir = cond(runiform()<0.5,-1,1)      
-    scalar shift = k*dir                        
+    scalar k = floor(runiform()*5) + 1              
+    scalar shift = -k                     
 
     gen bri_year_T_Placebo_100 = bri_year               
     replace bri_year_T_Placebo_100 = bri_year + shift if bri_year > 0 & bri_year < . 
@@ -143,7 +142,7 @@ preserve
     replace bri_year_T_Placebo_100 = . if bri_year == .  
 
     quietly did_imputation lntrade prvn year bri_year_T_Placebo_100, ///
-        pre(10) horizons(0/8) cluster(prvn) autos delta(1) minn(5)
+        pre(10) horizons(0/0) cluster(prvn) autos delta(1) minn(5)
 
     matrix b_TP = e(b)
     local cn_TP  : colnames b_TP                 

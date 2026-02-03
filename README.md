@@ -117,7 +117,7 @@ This tests whether spurious effects appear **before** true policy implementation
 
 To implement **randomization inference (RI)**:
 
-* Random shifts of ±1 to ±5 years are applied to treated provinces
+* Random shifts of -1 to -5 years are applied to treated provinces
 * `did_imputation` is run 100 times
 * Each simulation extracts the placebo estimate of `tau0`
 * These placebo τ₀ values form a **null distribution**
